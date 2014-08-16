@@ -29,26 +29,11 @@ static void window_unload(Window *window)
 	text_layer_destroy(z_layer);
 }
 
-static void accel_new_data(AccelData *data, uint32_t num_samples)
-{
-	for(uint32_t i = 0; i < num_samples; i++)
-	{
-		latest_data[(i * 3) + 0] = (int)(0 + data[i].x);	//0, 3, 6
-		latest_data[(i * 3) + 1] = (int)(0 + data[i].y);	//1, 4, 7
-		latest_data[(i * 3) + 2] = (int)(0 + data[i].z);	//2, 5, 8
-	}
-}
-
-static void in_dropped_handler(AppMessageResult reason, void *context) 
-{ 
-	cl_interpret_message_result(reason);
-}
-
 static void send_next_data()
 {
 	DictionaryIterator *iter;
 	app_message_outbox_begin(&iter);
-
+    
 	for(int i = 0; i < NUM_SAMPLES; i++)
 	{
 		for(int j = 0; j < 3; j++)
@@ -58,23 +43,47 @@ static void send_next_data()
 			dict_write_tuplet(iter, &t);
 		}
 	}
-	
+	BatteryChargeState battery = battery_state_service_peek();
+	Tuplet t = TupletInteger((3 * NUM_SAMPLES), battery.charge_percent);
+	dict_write_tuplet(iter, &t);
+    //app_comm_set_sniff_interval(SNIFF_INTERVAL_REDUCED);
+    
 	app_message_outbox_send();
+    //app_comm_set_sniff_interval(SNIFF_INTERVAL_NORMAL);
 }
+
+static void accel_new_data(AccelData *data, uint32_t num_samples)
+{
+	for(uint32_t i = 0; i < num_samples; i++)
+	{
+		latest_data[(i * 3) + 0] = (int)(0 + data[i].x);	//0, 3, 6
+		latest_data[(i * 3) + 1] = (int)(0 + data[i].y);	//1, 4, 7
+		latest_data[(i * 3) + 2] = (int)(0 + data[i].z);	//2, 5, 8
+	}
+    
+    send_next_data();
+}
+
+static void in_dropped_handler(AppMessageResult reason, void *context) 
+{ 
+	cl_interpret_message_result(reason);
+}
+
+
 
 static void out_sent_handler(DictionaryIterator *iter, void *context)
 {
 	//CAUTION - INFINITE LOOP
-	send_next_data();
+	//send_next_data();
 
-	// //Show on watch
-	// static char buffs[3][32];
-	// snprintf(buffs[0], sizeof("X: XXXXX"), "X: %d", latest_data[0]);
-	// snprintf(buffs[1], sizeof("Y: YYYYY"), "Y: %d", latest_data[1]);
-	// snprintf(buffs[2], sizeof("Z: ZZZZZ"), "Z: %d", latest_data[2]);
-	// text_layer_set_text(x_layer, buffs[0]);
-	// text_layer_set_text(y_layer, buffs[1]);
-	// text_layer_set_text(z_layer, buffs[2]);
+	 //Show on watch
+//	 static char buffs[3][32];
+//	 snprintf(buffs[0], sizeof("X: XXXXX"), "X: %d", latest_data[0]);
+//	 snprintf(buffs[1], sizeof("Y: YYYYY"), "Y: %d", latest_data[1]);
+//	 snprintf(buffs[2], sizeof("Z: ZZZZZ"), "Z: %d", latest_data[2]);
+//     text_layer_set_text(x_layer, buffs[0]);
+//	 text_layer_set_text(y_layer, buffs[1]);
+//	 text_layer_set_text(z_layer, buffs[2]);
 }
 
 static void process_tuple(Tuple *t)
@@ -124,7 +133,7 @@ static void init(void)
 	cl_set_debug(true);
 
 	accel_data_service_subscribe(NUM_SAMPLES, (AccelDataHandler)accel_new_data);
-	accel_service_set_sampling_rate(ACCEL_SAMPLING_100HZ);
+	accel_service_set_sampling_rate(ACCEL_SAMPLING_50HZ);
 
 	app_comm_set_sniff_interval(SNIFF_INTERVAL_REDUCED);
 	app_message_register_inbox_received(in_received_handler);
@@ -134,10 +143,15 @@ static void init(void)
 
 	int in_size = app_message_inbox_size_maximum();
 	int out_size = app_message_outbox_size_maximum();
+
+    
 	app_log(APP_LOG_LEVEL_INFO, "C", 0, "I/O Buffer: %d/%d", in_size, out_size);
 	app_message_open(in_size, out_size);
 
 	window_stack_push(window, true);
+    char temp[10];
+    snprintf(temp,sizeof("size: ZZZ"), "size: %d", out_size);
+    text_layer_set_text(x_layer, temp);
 }
 
 static void deinit(void) 
